@@ -11,7 +11,9 @@ import (
 )
 
 const envPrefix = "_TEL_AGENT_"
+const initContainerName = "tel-agent-init"
 
+// AgentContainer will return a configured traffic agent
 func AgentContainer(
 	name string,
 	imageName string,
@@ -35,6 +37,30 @@ func AgentContainer(
 				},
 			},
 		},
+	}
+}
+
+// InitContainer will return a configured init container for an agent.
+func InitContainer(imageName string, port corev1.ContainerPort, appPort int) corev1.Container {
+	env := []corev1.EnvVar{
+		{
+			Name:  "APP_PORT",
+			Value: strconv.Itoa(appPort),
+		},
+		{
+			Name:  "AGENT_PORT",
+			Value: strconv.Itoa(int(port.ContainerPort)),
+		},
+		{
+			Name:  "AGENT_PROTOCOL",
+			Value: string(port.Protocol),
+		},
+	}
+	return corev1.Container{
+		Name:  initContainerName,
+		Image: imageName,
+		Args:  []string{"agent-init"},
+		Env:   env,
 	}
 }
 

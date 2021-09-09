@@ -97,17 +97,6 @@ func agentInjector(ctx context.Context, req *admission.AdmissionRequest) ([]patc
 		}
 	}
 
-	if svc.Spec.ClusterIP == "None" {
-		return nil, fmt.Errorf("intercepts of headless service: %s.%s won't work "+
-			"see https://github.com/telepresenceio/telepresence/issues/1632",
-			svc.Name, svc.Namespace)
-	}
-
-	if servicePort.TargetPort.Type == intstr.Int {
-		return nil, fmt.Errorf("intercepts of service %s.%s won't work because it has an integer targetPort",
-			svc.Name, svc.Namespace)
-	}
-
 	appPort := appContainer.Ports[containerPortIndex]
 
 	// Create patch operations to add the traffic-agent sidecar
@@ -118,9 +107,44 @@ func agentInjector(ctx context.Context, req *admission.AdmissionRequest) ([]patc
 	if err != nil {
 		return nil, err
 	}
-	patches = hidePorts(&pod, appContainer, servicePort.TargetPort.StrVal, patches)
+	if servicePort.TargetPort.Type == intstr.Int || svc.Spec.ClusterIP == "None" {
+		patches = addInitContainer(ctx, &pod, servicePort, &appPort, patches)
+	} else {
+		patches = hidePorts(&pod, appContainer, servicePort.TargetPort.StrVal, patches)
+	}
 	patches = addAgentVolume(patches)
 	return patches, nil
+}
+
+func addInitContainer(ctx context.Context, pod *corev1.Pod, svcPort *corev1.ServicePort, appPort *corev1.ContainerPort, patches []patchOperation) []patchOperation {
+	env := managerutil.GetEnv(ctx)
+	proto := svcPort.Protocol
+	if proto == "" {
+		proto = appPort.Protocol
+	}
+	containerPort := corev1.ContainerPort{
+		Protocol:      proto,
+		ContainerPort: env.AgentPort,
+	}
+	container := install.InitContainer(
+		env.AgentRegistry+"/"+env.AgentImage,
+		containerPort,
+		int(appPort.ContainerPort),
+	)
+
+	if pod.Spec.InitContainers == nil {
+		patches = append(patches, patchOperation{
+			Op:    "add",
+			Path:  "/spec/initContainers",
+			Value: []corev1.Container{},
+		})
+	}
+
+	return append(patches, patchOperation{
+		Op:    "add",
+		Path:  "/spec/initContainers/-",
+		Value: container,
+	})
 }
 
 func addAgentVolume(patches []patchOperation) []patchOperation {
@@ -163,6 +187,13 @@ func addAgentContainer(
 	if proto == "" {
 		proto = appPort.Protocol
 	}
+	containerPort := corev1.ContainerPort{
+		Protocol:      proto,
+		ContainerPort: env.AgentPort,
+	}
+	if svcPort.TargetPort.Type == intstr.String {
+		containerPort.Name = svcPort.TargetPort.StrVal
+	}
 	patches = append(patches, patchOperation{
 		Op:   "add",
 		Path: "/spec/containers/-",
@@ -170,11 +201,7 @@ func addAgentContainer(
 			agentName,
 			env.AgentRegistry+"/"+env.AgentImage,
 			appContainer,
-			corev1.ContainerPort{
-				Name:          svcPort.TargetPort.StrVal,
-				Protocol:      proto,
-				ContainerPort: env.AgentPort,
-			},
+			containerPort,
 			int(appPort.ContainerPort),
 			env.ManagerNamespace)})
 
