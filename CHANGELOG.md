@@ -1,5 +1,11 @@
 # Changelog
 
+### 2.4.4 (TBD)
+
+- Feature: Add the command `telepresence gather-logs`, which bundles the logs for all components
+  into one zip file that can then be shared in a github issue, in slack, etc.  Use
+  `telepresence gather-logs --help` to see additional options for running the command.
+
 ### 2.4.3 (TBD)
 
 - Feature: The environment variable `TELEPRESENCE_INTERCEPT_ID` is now available in the interceptor's environment.
