@@ -36,3 +36,19 @@ func GetClusterID(ctx context.Context, client *kates.Client) (clusterID string, 
 	}
 	return namespaceID, nil
 }
+
+func GetAllPods(ctx context.Context, client *kates.Client) ([]*kates.Pod, error) {
+	var pods []*kates.Pod
+	if err := client.List(ctx, kates.Query{Kind: "Pod"}, &pods); err != nil {
+		return nil, err
+	}
+	return pods, nil
+}
+
+func GetNamespacePods(ctx context.Context, client *kates.Client, namespace string) ([]*kates.Pod, error) {
+	var pods []*kates.Pod
+	if err := client.List(ctx, kates.Query{Kind: "Pod", Namespace: namespace}, &pods); err != nil {
+		return nil, err
+	}
+	return pods, nil
+}
